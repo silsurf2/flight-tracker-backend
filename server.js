@@ -67,11 +67,13 @@ app.get('/api/flights', async (req, res) => {
     cache.set(cacheKey, result);
     res.json({ ...result, cached: false });
 
-  } catch (error) {
-    console.error('Error:', error.message);
+    } catch (error) {
+    console.error('Error:', error.message || error);
     res.status(500).json({ 
       error: 'Server error',
-      message: error.message 
+      message: error.message,
+      stack: error.stack,
+      full: error.response?.data || null
     });
   }
 });
