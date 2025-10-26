@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portland - NYC Flight Tracker (LIVE)</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { color: #1a73e8; margin-bottom: 10px; }
+        .subtitle { color: #666; margin-bottom: 30px; }
+        .search-form { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+        .form-group { flex: 1; min-width: 200px; }
+        label { display: block; margin-bottom: 5px; font-weight: 500; color: #333; }
+        select, input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        button { background: #1a73e8; color: white; padding: 12px 30px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: 500; }
+        button:hover { background: #1557b0; }
+        .loading { text-align: center; padding: 40px; color: #666; font-size: 18px; }
+        .error { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; padding: 15px; border-radius: 6px; margin: 20px 0; }
+        .results-header { margin: 30px 0 20px; padding-bottom: 10px; border-bottom: 2px solid #e5e7eb; }
+        .flight-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; transition: box-shadow 0.2s; }
+        .flight-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .flight-info { flex: 1; }
+        .airline { font-weight: 600; font-size: 18px; color: #1f2937; margin-bottom: 5px; }
+        .flight-number { color: #6b7280; font-size: 14px; margin-bottom: 10px; }
+        .route { display: flex; align-items: center; gap: 15px; margin: 10px 0; }
+        .time { font-size: 20px; font-weight: 600; color: #1f2937; }
+        .airport { font-size: 12px; color: #6b7280; }
+        .arrow { color: #9ca3af; }
+        .status { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .status.landed { background: #d1fae5; color: #065f46; }
+        .status.scheduled { background: #dbeafe; color: #1e40af; }
+        .status.active { background: #fef3c7; color: #92400e; }
+        .book-btn { background: #10b981; padding: 10px 20px; font-size: 14px; white-space: nowrap; }
+        .book-btn:hover { background: #059669; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✈️ Portland - NYC Flight Tracker</h1>
+        <p class="subtitle">Live flight data powered by AviationStack</p>
+        <div class="search-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Direction</label>
+                    <select id="direction">
+                        <option value="PWM-NYC">Portland → NYC</option>
+                        <option value="NYC-PWM">NYC → Portland</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>NYC Airport</label>
+                    <select id="airport">
+                        <option value="JFK">JFK - John F. Kennedy</option>
+                        <option value="LGA">LGA - LaGuardia</option>
+                        <option value="EWR">EWR - Newark</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Date (optional)</label>
+                    <input type="date" id="flightDate">
+                </div>
+            </div>
+            <button onclick="searchFlights()">Search Flights</button>
+        </div>
+        <div id="results"></div>
+    </div>
+    <script>
+        function formatTime(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        }
+        function getBookingUrl(airline, origin, dest) {
+            const urls = {
+                'Delta Air Lines': `https://www.delta.com/flight-search/book-a-flight?origin=${origin}&dest=${dest}`,
+                'JetBlue Airways': `https://www.jetblue.com/booking/flights?from=${origin}&to=${dest}`,
+                'JetBlue': `https://www.jetblue.com/booking/flights?from=${origin}&to=${dest}`,
+                'American Airlines': `https://www.aa.com/booking/find-flights?origin=${origin}&dest=${dest}`,
+                'United Airlines': `https://www.united.com/en/us/fsr/choose-flights?origin=${origin}&dest=${dest}`,
+                'United': `https://www.united.com/en/us/fsr/choose-flights?origin=${origin}&dest=${dest}`
+            };
+            return urls[airline] || `https://www.google.com/flights?q=flights+from+${origin}+to+${dest}`;
+        }
+        async function searchFlights() {
+            const direction = document.getElementById('direction').value;
+            const airport = document.getElementById('airport').value;
+            const flightDate = document.getElementById('flightDate').value;
+            const resultsDiv = document.getElementById('results');
+            const [dep, arr] = direction === 'PWM-NYC' ? ['PWM', airport] : [airport, 'PWM'];
+            resultsDiv.innerHTML = '<div class="loading">🔍 Searching flights...</div>';
+            try {
+                let url = `/api/flights?dep_iata=${dep}&arr_iata=${arr}`;
+                if (flightDate) url += `&flight_date=${flightDate}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data.error) {
+                    resultsDiv.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                    return;
+                }
+                if (data.count === 0) {
+                    resultsDiv.innerHTML = '<div class="error">No flights found for this route.</div>';
+                    return;
+                }
+                let html = `<div class="results-header"><h2>Found ${data.count} flights</h2></div>`;
+                data.data.forEach(flight => {
+                    const airline = flight.airline.name;
+                    const flightNum = flight.flight.iata || flight.flight.number;
+                    const depTime = formatTime(flight.departure.scheduled);
+                    const arrTime = formatTime(flight.arrival.scheduled);
+                    const depAirport = flight.departure.iata;
+                    const arrAirport = flight.arrival.iata;
+                    const status = flight.flight_status;
+                    const bookUrl = getBookingUrl(airline, depAirport, arrAirport);
+                    html += `
+                        <div class="flight-card">
+                            <div class="flight-info">
+                                <div class="airline">${airline}</div>
+                                <div class="flight-number">Flight ${flightNum}</div>
+                                <div class="route">
+                                    <div><div class="time">${depTime}</div><div class="airport">${depAirport}</div></div>
+                                    <div class="arrow">→</div>
+                                    <div><div class="time">${arrTime}</div><div class="airport">${arrAirport}</div></div>
+                                </div>
+                                <span class="status ${status}">${status}</span>
+                            </div>
+                            <a href="${bookUrl}" target="_blank" style="text-decoration: none;">
+                                <button class="book-btn">Book Now</button>
+                            </a>
+                        </div>
+                    `;
+                });
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">Error loading flights: ${error.message}</div>`;
+            }
+        }
+        window.onload = () => searchFlights();
+    </script>
+</body>
+</html>
